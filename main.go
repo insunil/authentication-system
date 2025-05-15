@@ -1,0 +1,40 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+var collection *mongo.Collection
+
+func init() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Unable to load env variable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	clientOption := options.Client().ApplyURI(os.Getenv("MONGO_URI"))
+	client, err := mongo.Connect(ctx, clientOption)
+	if err != nil {
+		log.Fatal("unable to connect")
+	}
+	collection = client.Database("login").Collection("users")
+}
+func main() {
+	r := mux.NewRouter()
+	r.HandleFunc("/api/users", getUser).Methods("GET")
+	r.HandleFunc("/api/user", addUser).Methods("POST")
+
+	http.ListenAndServe(":4000", r)
+	fmt.Println("Started server")
+}
