@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -41,6 +42,14 @@ func register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewDecoder(r.Body).Decode(&user)
+	// password validation
+	if !ValidatePassword(user.Password) {
+		fmt.Println(user.Password)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(Response{Message: "Password must be between 8 and 20 characters long, contain at least one uppercase letter, one lowercase letter, one digit, and one special character."})
+		return
+	}
+	//
 
 	if verifyEmail(user.Email) {
 		w.WriteHeader(http.StatusConflict) // user already exist
@@ -70,11 +79,46 @@ func register(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	//
+
 	result, _ := collection.InsertOne(ctx, user)
 	fmt.Println(result.InsertedID)
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(user)
 
+}
+
+func ValidatePassword(password string) bool {
+	if len(password) < 8 {
+		fmt.Println("password is less than 8", len(password))
+		return false
+	}
+
+	if len(password) > 20 {
+		fmt.Println("password is greater than 20", len(password))
+		return false
+	}
+
+	if match, _ := regexp.MatchString(`[A-Z]`, password); !match {
+		fmt.Println("password must contain at least one uppercase letter")
+		return false
+	}
+
+	if match, _ := regexp.MatchString(`[a-z]`, password); !match {
+		fmt.Println("password must contain at least one lowercase letter")
+		return false
+	}
+
+	if match, _ := regexp.MatchString(`[0-9]`, password); !match {
+		fmt.Println("password must contain at least one digit")
+		return false
+	}
+
+	if match, _ := regexp.MatchString(`[^a-zA-Z0-9]`, password); !match {
+		fmt.Println("password must contain at least one special character")
+		return false
+	}
+
+	return true
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
