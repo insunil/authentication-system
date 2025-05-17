@@ -28,13 +28,14 @@ func init() {
 	if err != nil {
 		log.Fatal("unable to connect")
 	}
-	collection = client.Database("login").Collection("users")
+	collection = client.Database("auth").Collection("user")
 }
+
 func main() {
 	r := mux.NewRouter()
-	r.HandleFunc("/api/users", getUser).Methods("GET")
-	r.HandleFunc("/api/user", addUser).Methods("POST")
+	r.HandleFunc("/auth/login", login).Methods("POST")
+	r.HandleFunc("/auth/register", register).Methods("POST")
 
+	fmt.Println("Starting server ...")
 	http.ListenAndServe(":4000", r)
-	fmt.Println("Started server")
 }
