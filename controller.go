@@ -49,6 +49,27 @@ func register(w http.ResponseWriter, r *http.Request) {
 	}
 	res, _ := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	user.Password = string(res)
+	user.CreatedAt = time.Now()
+	// check if dob is empty
+	if user.Dob.IsZero() {
+		fmt.Println("dob is empty")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(Response{Message: "Invalid date of birth"})
+		return
+	}
+	// if not empty
+	if !user.Dob.IsZero() {
+		age := time.Now().Year() - user.Dob.Year()
+		if time.Now().YearDay() < user.Dob.YearDay() {
+			age--
+		}
+		if age < 18 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(Response{Message: "user must be 18 years or older"})
+			return
+		}
+	}
+	//
 	result, _ := collection.InsertOne(ctx, user)
 	fmt.Println(result.InsertedID)
 	w.WriteHeader(http.StatusCreated)
@@ -58,7 +79,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 
 func login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var tempUser LoginDto
@@ -87,4 +108,10 @@ func login(w http.ResponseWriter, r *http.Request) {
 
 	json.NewEncoder(w).Encode(Response{Message: "user credential did not match"})
 
+}
+
+func notFound(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotFound)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(Response{Message: "not found"})
 }

@@ -36,6 +36,8 @@ func main() {
 	r.HandleFunc("/auth/login", login).Methods("POST")
 	r.HandleFunc("/auth/register", register).Methods("POST")
 
+	r.NotFoundHandler = http.HandlerFunc(notFound)
+
 	fmt.Println("Starting server ...")
 	http.ListenAndServe(":4000", r)
 }
