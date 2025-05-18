@@ -35,7 +35,12 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/auth/login", login).Methods("POST")
 	r.HandleFunc("/auth/register", register).Methods("POST")
-
+	//update with user id
+	r.HandleFunc("/auth/update/{id}", updateUser).Methods("PUT")
+	r.HandleFunc("/auth/getUser/{id}", getUser).Methods("GET")
+	r.HandleFunc("/auth/changePassword/{id}", changePassword).Methods("PUT")
+	r.HandleFunc("/auth/forgotPassword/{id}", forgetPassword).Methods("PUT")
+	r.HandleFunc("/auth/verifyOtp/{id}", verifyOtp).Methods("PUT")
 	r.NotFoundHandler = http.HandlerFunc(notFound)
 
 	fmt.Println("Starting server ...")
