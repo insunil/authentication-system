@@ -11,7 +11,8 @@ type UserDto struct {
 	CreatedAt time.Time `bson:"created_at" json:"created_at"`
 	UpdatedAt time.Time `bson:"updated_at" json:"updated_at"`
 	Verified  bool      `bson:"verified" json:"verified"`
-	OTP       string    `bson:"otp" json:"otp"`
+	OTP       string    `bson:"otp,omitempty" json:"otp"`
+	Votp      string    `bson:"votp,omitempty" json:"votp"`
 }
 
 type Response struct {

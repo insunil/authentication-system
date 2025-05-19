@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"regexp"
 	"strconv"
@@ -273,9 +274,45 @@ func changePassword(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(Response{Message: "password changed successfully"})
 }
 
-// forget password with id, email and new password
-func forgetPassword(w http.ResponseWriter, r *http.Request) {
+func forgotPassword(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Forget password")
+	w.Header().Set("Content-Type", "application/json")
+	var tempData struct {
+		Email string `bson:"email,omitempty" json:"email,omitempty"`
+	}
+	json.NewDecoder(r.Body).Decode(&tempData)
+	// validate email
+	_, err := mail.ParseAddress(tempData.Email)
+	if err != nil {
+
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(Response{Message: "Invalid email format"})
+		return
+	}
+	// check if email exists
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var user UserDto
+	result := collection.FindOne(ctx, bson.M{"email": tempData.Email})
+	fmt.Println(result)
+	errore := result.Decode(&user)
+	if errore != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(Response{Message: "user not found"})
+		return
+	}
+
+	// generate otp and send mail
+	otp := otpGenerator()
+	// update otp in database in votp field
+	collection.UpdateOne(ctx, bson.M{"email": tempData.Email}, bson.M{"$set": bson.M{"votp": otp}})
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(Response{Message: "otp sent successfully"})
+
+}
+func restPassword(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Reset password")
 	w.Header().Set("Content-Type", "application/json")
 	//get object id
 	params := mux.Vars(r)
@@ -284,7 +321,7 @@ func forgetPassword(w http.ResponseWriter, r *http.Request) {
 	objectid, _ := primitive.ObjectIDFromHex(idParams)
 
 	var tempUser struct {
-		Email       string `bson:"email,omitempty" json:"email,omitempty"`
+		OTP         string `bson:"otp,omitempty" json:"otp,omitempty"`
 		NewPassword string `bson:"newPassword,omitempty" json:"newPassword,omitempty"`
 	}
 	json.NewDecoder(r.Body).Decode(&tempUser)
@@ -297,9 +334,10 @@ func forgetPassword(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(Response{Message: "user not found"})
 		return
 	}
-	if user.Email != tempUser.Email {
+	fmt.Println(user.Votp, tempUser.OTP, user.Name)
+	if user.Votp != tempUser.OTP {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(Response{Message: "email is incorrect"})
+		json.NewEncoder(w).Encode(Response{Message: "otp is incorrect"})
 		return
 	}
 	// password validation
