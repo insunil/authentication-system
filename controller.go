@@ -292,9 +292,12 @@ func forgotPassword(w http.ResponseWriter, r *http.Request) {
 	// check if email exists
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	var user UserDto
+	// to store only object id from user(it contain lot of field)
+	var user struct {
+		Id primitive.ObjectID `bson:"_id" json:"_id"`
+	}
 	result := collection.FindOne(ctx, bson.M{"email": tempData.Email})
-	fmt.Println(result)
+
 	errore := result.Decode(&user)
 	if errore != nil {
 		w.WriteHeader(http.StatusNotFound)
@@ -308,7 +311,7 @@ func forgotPassword(w http.ResponseWriter, r *http.Request) {
 	collection.UpdateOne(ctx, bson.M{"email": tempData.Email}, bson.M{"$set": bson.M{"votp": otp}})
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(Response{Message: "otp sent successfully"})
+	json.NewEncoder(w).Encode(Response{Message: "otp sent successfully" + "object id is " + user.Id.Hex()})
 
 }
 func restPassword(w http.ResponseWriter, r *http.Request) {
