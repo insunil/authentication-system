@@ -1,6 +1,8 @@
 # Authentication
 
 Building Auth system using Go & MongoDB
+
+
 # Features of the project
 - User Registration
 - User Login
@@ -14,8 +16,13 @@ Building Auth system using Go & MongoDB
 # Tech Stack
 - Go
 - Mongodb
+- JWT (JSON Web Token)
+- bcrypt for password Hashing
+- Gorilla mux for routing
 
 
-// build 
- go build . -o name
- // ./name
+ # Building Project
+ go build . -o projectName
+ # Running Project
+ ./projectName
+
