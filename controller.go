@@ -156,6 +156,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 		Verified    bool               `bson:"verified" json:"verified"`
 		Password    string             `bson:"password" json:"password"`
 		IsTwoFactor bool               `bson:"isTwoFactor" json:"isTwoFactor"`
+		Role        string             `bson:"role" json:"role"`
 	}
 	cursor, _ := collection.Find(ctx, bson.M{})
 	defer cursor.Close(ctx)

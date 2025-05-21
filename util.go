@@ -20,6 +20,7 @@ type UserDto struct {
 	LoginOtp       string    `bson:"loginOtp,omitempty" json:"login"`
 	IsTwoFactor    bool      `bson:"isTwoFactor, omitempty" json:"isTwoFactor"`
 	ExpireLoginOtp time.Time `bson:"expireLoginOtp" json:"expireLoginOtp"`
+	Role           string    `bson:"role" json:"role"`
 }
 
 type Response struct {
