@@ -8,10 +8,13 @@ import (
 	"net/http"
 	"net/mail"
 	"net/smtp"
+	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -146,12 +149,18 @@ func login(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	var tempUser LoginDto
 	json.NewDecoder(r.Body).Decode(&tempUser)
-	var user UserDto
+
+	var user struct {
+		Id          primitive.ObjectID `bson:"_id" json:"_id"`
+		Email       string             `bson:"email" json:"email"`
+		Verified    bool               `bson:"verified" json:"verified"`
+		Password    string             `bson:"password" json:"password"`
+		IsTwoFactor bool               `bson:"isTwoFactor" json:"isTwoFactor"`
+	}
 	cursor, _ := collection.Find(ctx, bson.M{})
 	defer cursor.Close(ctx)
 
 	for cursor.Next(ctx) {
-
 		cursor.Decode(&user)
 
 		if user.Email == tempUser.Email && user.Verified {
@@ -159,8 +168,30 @@ func login(w http.ResponseWriter, r *http.Request) {
 
 			if err == nil {
 				//login success status code
+				// check TwoFactor Enabled or not
+				if user.IsTwoFactor {
+					otp := otpGenerator()
+					expireTime := time.Now().Add(1 * time.Minute)
+
+					collection.UpdateOne(ctx, bson.M{"_id": user.Id}, bson.M{"$set": bson.M{"loginOtp": otp, "expireLoginOtp": expireTime}})
+					w.WriteHeader(http.StatusOK)
+					json.NewEncoder(w).Encode(Response{Message: "otp has been sent"})
+					return
+
+				}
+
+				userid := user.Id.Hex() // convert objectid to string
+				tokenString, err := TokenGenerator(userid)
+				if err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(Response{Message: "could not create token"})
+					return
+				}
+				// send token in response
+
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(Response{Message: "Login success"})
+				json.NewEncoder(w).Encode(map[string]string{
+					"token": tokenString})
 				return
 			}
 		}
@@ -171,7 +202,53 @@ func login(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(Response{Message: "user credential did not match"})
 
 }
+func loginWithOtp(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Verify login")
+	w.Header().Set("Content-Type", "application/json")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
+	var tempUser struct {
+		LoginOtp string `bson:"loginOtp"`
+	}
+	// get objectid
+	params := mux.Vars(r)
+	idParams := params["id"]
+
+	objectid, _ := primitive.ObjectIDFromHex(idParams)
+	json.NewDecoder(r.Body).Decode(&tempUser)
+
+	var user struct {
+		Id             primitive.ObjectID `bson:"_id" json:"_id"`
+		LoginOtp       string             `bson:"loginOtp"`
+		ExpireLoginOtp time.Time          `bson:"expireLoginOtp"`
+	}
+	collection.FindOne(ctx, bson.M{"_id": objectid}).Decode(&user)
+	if user.LoginOtp == tempUser.LoginOtp {
+		if time.Now().After(user.ExpireLoginOtp) {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(Response{Message: "Otp has been expired"})
+			return
+		}
+		userid := user.Id.Hex() // convert objectid to string
+		tokenString, err := TokenGenerator(userid)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(Response{Message: "could not create token"})
+			return
+		}
+		// send token in response
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{
+			"token": tokenString})
+		return
+	}
+
+	w.WriteHeader(http.StatusUnauthorized)
+	json.NewEncoder(w).Encode(Response{Message: "Invalid otp"})
+
+}
 func notFound(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotFound)
 	w.Header().Set("Content-Type", "application/json")
@@ -181,9 +258,36 @@ func notFound(w http.ResponseWriter, r *http.Request) {
 func updateUser(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("update")
 	w.Header().Set("Content-Type", "application/json")
-	params := mux.Vars(r)
-	nid := params["id"]
-	objectId, _ := primitive.ObjectIDFromHex(nid)
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+
+		fmt.Println("Missing token")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "Missing token"})
+		return
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+
+		fmt.Println("Invalid token")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "Invalid token format"})
+
+		return
+	}
+
+	tokenStr := parts[1]
+	// verify token
+	userid, errr := VerifyToken(tokenStr)
+	if errr != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "unauthorized token"})
+		return
+	}
+	//convert string to objectid
+	objectId, _ := primitive.ObjectIDFromHex(userid)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var updateUser struct {
@@ -211,9 +315,36 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 func getUser(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("getting")
 	w.Header().Set("Content-Type", "application/json")
-	params := mux.Vars(r)
-	nid := params["id"]
-	objectId, _ := primitive.ObjectIDFromHex(nid)
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+
+		fmt.Println("Missing token")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "Missing token"})
+		return
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+
+		fmt.Println("Invalid token")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "Invalid token format"})
+
+		return
+	}
+
+	tokenStr := parts[1]
+	// verify token
+	userid, errr := VerifyToken(tokenStr)
+	if errr != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "unauthorized token"})
+		return
+	}
+	//convert string to objectid
+	objectId, _ := primitive.ObjectIDFromHex(userid)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var user UserDto
@@ -232,11 +363,36 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 func changePassword(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Change password")
 	w.Header().Set("Content-Type", "application/json")
-	//get object id
-	params := mux.Vars(r)
-	idParams := params["id"]
 
-	objectid, _ := primitive.ObjectIDFromHex(idParams)
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+
+		fmt.Println("Missing token")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "Missing token"})
+		return
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+
+		fmt.Println("Invalid token")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "Invalid token format"})
+
+		return
+	}
+
+	tokenStr := parts[1]
+	// verify token
+	userid, errr := VerifyToken(tokenStr)
+	if errr != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "unauthorized token"})
+		return
+	}
+	//convert string to objectid
+	objectid, _ := primitive.ObjectIDFromHex(userid)
 
 	var tempUser struct {
 		OldPassword string `bson:"oldPassword,omitempty" json:"oldPassword,omitempty"`
@@ -314,7 +470,7 @@ func forgotPassword(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(Response{Message: "otp sent successfully" + "object id is " + user.Id.Hex()})
 
 }
-func restPassword(w http.ResponseWriter, r *http.Request) {
+func resetPassword(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Reset password")
 	w.Header().Set("Content-Type", "application/json")
 	//get object id
@@ -378,8 +534,43 @@ func otpGenerator() string {
 	return otp
 }
 
+// Token Generator
+func TokenGenerator(userid string) (string, error) {
+	claims := &Claims{
+		Userid: userid,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET_KEY")))
+	if err != nil {
+		fmt.Println("could not create token")
+		return "", err
+	}
+	return tokenString, nil
+}
+
+// verify token
+func VerifyToken(tokenString string) (string, error) {
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(os.Getenv("JWT_SECRET_KEY")), nil
+	})
+
+	if err != nil || !token.Valid {
+		fmt.Println("unauthorized token")
+		return "", err
+	}
+	return claims.Userid, nil
+
+}
+
 // verify otp with otp and id
-func verifyOtp(w http.ResponseWriter, r *http.Request) {
+func verifyEmailOtp(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Verify otp")
 	w.Header().Set("Content-Type", "application/json")
 	//get object id
