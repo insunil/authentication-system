@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math/rand"
 	"net/http"
 	"net/mail"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
+	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
@@ -37,7 +37,7 @@ func verifyEmail(s1 string) bool {
 }
 
 func register(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("register")
+	logrus.Println("register")
 	w.Header().Set("Content-Type", "application/json")
 
 	var user UserDto
@@ -53,7 +53,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&user)
 	// password validation
 	if !ValidatePassword(user.Password) {
-		fmt.Println(user.Password)
+		logrus.Println(user.Password)
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(Response{Message: "Password must be between 8 and 20 characters long, contain at least one uppercase letter, one lowercase letter, one digit, and one special character."})
 		return
@@ -72,7 +72,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 
 	// check if dob is empty
 	if user.Dob.IsZero() {
-		fmt.Println("dob is empty")
+		logrus.Println("dob is empty")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(Response{Message: "Invalid date of birth"})
 		return
@@ -93,7 +93,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 	user.Verified = false
 	user.OTP = otpGenerator()
 	result, _ := collection.InsertOne(ctx, user)
-	fmt.Println(result.InsertedID)
+	logrus.Println(result.InsertedID)
 	w.WriteHeader(http.StatusCreated)
 	// for the response we will not send the password
 
@@ -110,32 +110,32 @@ func register(w http.ResponseWriter, r *http.Request) {
 
 func ValidatePassword(password string) bool {
 	if len(password) < 8 {
-		fmt.Println("password is less than 8", len(password))
+		logrus.Println("password is less than 8", len(password))
 		return false
 	}
 
 	if len(password) > 20 {
-		fmt.Println("password is greater than 20", len(password))
+		logrus.Println("password is greater than 20", len(password))
 		return false
 	}
 
 	if match, _ := regexp.MatchString(`[A-Z]`, password); !match {
-		fmt.Println("password must contain at least one uppercase letter")
+		logrus.Println("password must contain at least one uppercase letter")
 		return false
 	}
 
 	if match, _ := regexp.MatchString(`[a-z]`, password); !match {
-		fmt.Println("password must contain at least one lowercase letter")
+		logrus.Println("password must contain at least one lowercase letter")
 		return false
 	}
 
 	if match, _ := regexp.MatchString(`[0-9]`, password); !match {
-		fmt.Println("password must contain at least one digit")
+		logrus.Println("password must contain at least one digit")
 		return false
 	}
 
 	if match, _ := regexp.MatchString(`[^a-zA-Z0-9]`, password); !match {
-		fmt.Println("password must contain at least one special character")
+		logrus.Println("password must contain at least one special character")
 		return false
 	}
 
@@ -182,7 +182,8 @@ func login(w http.ResponseWriter, r *http.Request) {
 				}
 
 				userid := user.Id.Hex() // convert objectid to string
-				tokenString, err := TokenGenerator(userid)
+				role := user.Role
+				tokenString, err := TokenGenerator(userid, role)
 				if err != nil {
 					w.WriteHeader(http.StatusInternalServerError)
 					json.NewEncoder(w).Encode(Response{Message: "could not create token"})
@@ -204,7 +205,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 
 }
 func loginWithOtp(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Verify login")
+	logrus.Println("Verify login")
 	w.Header().Set("Content-Type", "application/json")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -223,6 +224,7 @@ func loginWithOtp(w http.ResponseWriter, r *http.Request) {
 		Id             primitive.ObjectID `bson:"_id" json:"_id"`
 		LoginOtp       string             `bson:"loginOtp"`
 		ExpireLoginOtp time.Time          `bson:"expireLoginOtp"`
+		Role           string             `bson:"role"`
 	}
 	collection.FindOne(ctx, bson.M{"_id": objectid}).Decode(&user)
 	if user.LoginOtp == tempUser.LoginOtp {
@@ -232,7 +234,8 @@ func loginWithOtp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		userid := user.Id.Hex() // convert objectid to string
-		tokenString, err := TokenGenerator(userid)
+		role := user.Role
+		tokenString, err := TokenGenerator(userid, role)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(Response{Message: "could not create token"})
@@ -257,12 +260,12 @@ func notFound(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateUser(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("update")
+	logrus.Println("update")
 	w.Header().Set("Content-Type", "application/json")
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 
-		fmt.Println("Missing token")
+		logrus.Println("Missing token")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(Response{Message: "Missing token"})
 		return
@@ -271,7 +274,7 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || parts[0] != "Bearer" {
 
-		fmt.Println("Invalid token")
+		logrus.Println("Invalid token")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(Response{Message: "Invalid token format"})
 
@@ -314,12 +317,12 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func getUser(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("getting")
+	logrus.Println("getting")
 	w.Header().Set("Content-Type", "application/json")
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 
-		fmt.Println("Missing token")
+		logrus.Println("Missing token")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(Response{Message: "Missing token"})
 		return
@@ -328,7 +331,7 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || parts[0] != "Bearer" {
 
-		fmt.Println("Invalid token")
+		logrus.Println("Invalid token")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(Response{Message: "Invalid token format"})
 
@@ -362,13 +365,13 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func changePassword(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Change password")
+	logrus.Println("Change password")
 	w.Header().Set("Content-Type", "application/json")
 
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 
-		fmt.Println("Missing token")
+		logrus.Println("Missing token")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(Response{Message: "Missing token"})
 		return
@@ -377,7 +380,7 @@ func changePassword(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || parts[0] != "Bearer" {
 
-		fmt.Println("Invalid token")
+		logrus.Println("Invalid token")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(Response{Message: "Invalid token format"})
 
@@ -418,7 +421,7 @@ func changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	// password validation
 	if !ValidatePassword(tempUser.NewPassword) {
-		fmt.Println(tempUser.NewPassword)
+		logrus.Println(tempUser.NewPassword)
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(Response{Message: "Password must be between 8 and 20 characters long, contain at least one uppercase letter, one lowercase letter, one digit, and one special character."})
 		return
@@ -432,7 +435,7 @@ func changePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func forgotPassword(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Forget password")
+	logrus.Println("Forget password")
 	w.Header().Set("Content-Type", "application/json")
 	var tempData struct {
 		Email string `bson:"email,omitempty" json:"email,omitempty"`
@@ -472,7 +475,7 @@ func forgotPassword(w http.ResponseWriter, r *http.Request) {
 
 }
 func resetPassword(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Reset password")
+	logrus.Println("Reset password")
 	w.Header().Set("Content-Type", "application/json")
 	//get object id
 	params := mux.Vars(r)
@@ -494,7 +497,7 @@ func resetPassword(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(Response{Message: "user not found"})
 		return
 	}
-	fmt.Println(user.Votp, tempUser.OTP, user.Name)
+	logrus.Println(user.Votp, tempUser.OTP, user.Name)
 	if user.Votp != tempUser.OTP {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(Response{Message: "otp is incorrect"})
@@ -502,7 +505,7 @@ func resetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	// password validation
 	if !ValidatePassword(tempUser.NewPassword) {
-		fmt.Println(tempUser.NewPassword)
+		logrus.Println(tempUser.NewPassword)
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(Response{Message: "Password must be between 8 and 20 characters long, contain at least one uppercase letter, one lowercase letter, one digit, and one special character."})
 		return
@@ -528,17 +531,18 @@ func otpGenerator() string {
 	auth := smtp.PlainAuth("", "insunilmahto@gmail.com", "ivqt uqto vadl acvz", "smtp.gmail.com")
 	err := smtp.SendMail("smtp.gmail.com"+":"+"587", auth, "insunilmahto@gmail.com", []string{"insunilmahto@gmail.com"}, message)
 	if err != nil {
-		fmt.Println("email did not send successfully")
+		logrus.Println("email did not send successfully")
 	} else {
-		fmt.Println("email sent successfully")
+		logrus.Println("email sent successfully")
 	}
 	return otp
 }
 
 // Token Generator
-func TokenGenerator(userid string) (string, error) {
+func TokenGenerator(userid string, role string) (string, error) {
 	claims := &Claims{
 		Userid: userid,
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -549,7 +553,7 @@ func TokenGenerator(userid string) (string, error) {
 
 	tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET_KEY")))
 	if err != nil {
-		fmt.Println("could not create token")
+		logrus.Println("could not create token")
 		return "", err
 	}
 	return tokenString, nil
@@ -563,16 +567,22 @@ func VerifyToken(tokenString string) (string, error) {
 	})
 
 	if err != nil || !token.Valid {
-		fmt.Println("unauthorized token")
+		logrus.Println("unauthorized token")
 		return "", err
 	}
 	return claims.Userid, nil
 
 }
 
+func adminHandler(w http.ResponseWriter, r *http.Request) {
+	logrus.Println("admin")
+	w.Header().Set("Content-Type", "application/json")
+
+}
+
 // verify otp with otp and id
 func verifyEmailOtp(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Verify otp")
+	logrus.Println("Verify otp")
 	w.Header().Set("Content-Type", "application/json")
 	//get object id
 	params := mux.Vars(r)

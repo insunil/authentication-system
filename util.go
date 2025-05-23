@@ -20,7 +20,7 @@ type UserDto struct {
 	LoginOtp       string    `bson:"loginOtp,omitempty" json:"login"`
 	IsTwoFactor    bool      `bson:"isTwoFactor, omitempty" json:"isTwoFactor"`
 	ExpireLoginOtp time.Time `bson:"expireLoginOtp" json:"expireLoginOtp"`
-	Role           string    `bson:"role" json:"role"`
+	Role           string    `bson:"role,omitempty" json:"role,omitempty"`
 }
 
 type Response struct {
@@ -42,5 +42,6 @@ type RegisterResponse struct {
 
 type Claims struct {
 	Userid string `json:"userid"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
