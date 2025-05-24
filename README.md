@@ -22,7 +22,10 @@ Building Auth system using Go & MongoDB
 
 
  # Building Project
- go build . -o projectName
+```sh
+ go build -o auth .
+ ```
  # Running Project
- ./projectName
-
+ ```sh
+ ./auth
+ ```

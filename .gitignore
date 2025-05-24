@@ -1,7 +1,7 @@
 .env
 .vscode
 .DS_Store
-.login
+auth
 test
 testt
 test3
