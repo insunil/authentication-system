@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -15,6 +15,7 @@ import (
 )
 
 var collection *mongo.Collection
+var logger *slog.Logger
 
 func init() {
 	err := godotenv.Load()
@@ -29,8 +30,10 @@ func init() {
 		log.Fatal("unable to connect")
 	}
 	collection = client.Database("auth").Collection("user")
-}
 
+	logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+}
 func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/auth/login", login).Methods("POST")
@@ -44,6 +47,7 @@ func main() {
 	r.HandleFunc("/auth/verify-login/{id}", loginWithOtp).Methods("POST")
 	r.NotFoundHandler = http.HandlerFunc(notFound)
 
-	fmt.Println("Starting server ...")
+	logger.Info("Starting server ...")
+
 	http.ListenAndServe(":4000", r)
 }
