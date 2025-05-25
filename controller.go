@@ -90,7 +90,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 	}
 	//
 	user.Verified = false
-	user.OTP = otpGenerator()
+	user.OTP = otpGenerator(user.Email)
 	result, err := collection.InsertOne(ctx, user)
 	if err != nil {
 		logger.Error("Insert failed", "error", err)
@@ -148,6 +148,7 @@ func ValidatePassword(password string) bool {
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
+	logger.Info("Logging")
 	w.Header().Set("Content-Type", "application/json")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -169,14 +170,22 @@ func login(w http.ResponseWriter, r *http.Request) {
 	for cursor.Next(ctx) {
 		cursor.Decode(&user)
 
-		if user.Email == tempUser.Email && user.Verified {
+		if user.Email == tempUser.Email {
 			err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(tempUser.Password))
 
 			if err == nil {
-				//login success status code
+				//login success
+
+				//check user is verified or not
+				if !user.Verified {
+					logger.Info("user is not verified")
+					w.WriteHeader(http.StatusForbidden)
+					json.NewEncoder(w).Encode(Response{Message: "user is not verified"})
+					return
+				}
 				// check TwoFactor Enabled or not
 				if user.IsTwoFactor {
-					otp := otpGenerator()
+					otp := otpGenerator(user.Email)
 					expireTime := time.Now().Add(1 * time.Minute)
 
 					collection.UpdateOne(ctx, bson.M{"_id": user.Id}, bson.M{"$set": bson.M{"loginOtp": otp, "expireLoginOtp": expireTime}})
@@ -356,16 +365,26 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	var user UserDto
-	err := collection.FindOne(ctx, bson.M{"_id": objectId}).Decode(&user)
+	var tempResponse struct {
+		Name  string `bson:"name" json:"name"`
+		Email string `bson:"email" json:"email"`
+
+		Dob         time.Time `bson:"dob,omitempty" json:"dob,omitempty"`
+		Gender      string    `bson:"gender,omitempty" json:"gender,omitempty"`
+		CreatedAt   time.Time `bson:"created_at" json:"created_at"`
+		UpdatedAt   time.Time `bson:"updated_at" json:"updated_at"`
+		IsTwoFactor bool      `bson:"isTwoFactor, omitempty" json:"isTwoFactor"`
+		Role        string    `bson:"role,omitempty" json:"role,omitempty"`
+	}
+	err := collection.FindOne(ctx, bson.M{"_id": objectId}).Decode(&tempResponse)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(Response{Message: "user not found"})
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	user.Password = "" // remove password from response
-	json.NewEncoder(w).Encode(user)
+
+	json.NewEncoder(w).Encode(tempResponse)
 
 }
 
@@ -471,7 +490,7 @@ func forgotPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// generate otp and send mail
-	otp := otpGenerator()
+	otp := otpGenerator(tempData.Email)
 	// update otp in database in votp field
 	collection.UpdateOne(ctx, bson.M{"email": tempData.Email}, bson.M{"$set": bson.M{"votp": otp}})
 
@@ -523,7 +542,7 @@ func resetPassword(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(Response{Message: "password changed successfully"})
 }
 
-func otpGenerator() string {
+func otpGenerator(receiver string) string {
 
 	a := strconv.Itoa(rand.Intn(9))
 	b := strconv.Itoa(rand.Intn(9))
@@ -534,7 +553,7 @@ func otpGenerator() string {
 	message := []byte("Subject:Hello from Go\r\n\r\n Your verified otp for authentication is " + otp)
 
 	auth := smtp.PlainAuth("", os.Getenv("GMAIL_EMAIL"), os.Getenv("GMAIL_APP_PASSWORD"), "smtp.gmail.com")
-	err := smtp.SendMail("smtp.gmail.com"+":"+"587", auth, "insunilmahto@gmail.com", []string{"insunilmahto@gmail.com"}, message)
+	err := smtp.SendMail("smtp.gmail.com"+":"+"587", auth, os.Getenv("GMAIL_EMAIL"), []string{receiver}, message)
 	if err != nil {
 		logger.Info("email did not send successfully")
 	} else {
@@ -576,12 +595,6 @@ func VerifyToken(tokenString string) (string, error) {
 		return "", err
 	}
 	return claims.Userid, nil
-
-}
-
-func adminHandler(w http.ResponseWriter, r *http.Request) {
-	logger.Info("admin")
-	w.Header().Set("Content-Type", "application/json")
 
 }
 

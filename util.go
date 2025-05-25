@@ -14,12 +14,12 @@ type UserDto struct {
 	Gender         string    `bson:"gender,omitempty" json:"gender,omitempty"`
 	CreatedAt      time.Time `bson:"created_at" json:"created_at"`
 	UpdatedAt      time.Time `bson:"updated_at" json:"updated_at"`
-	Verified       bool      `bson:"verified" json:"verified"`
-	OTP            string    `bson:"otp,omitempty" json:"otp"`
-	Votp           string    `bson:"votp,omitempty" json:"votp"`
-	LoginOtp       string    `bson:"loginOtp,omitempty" json:"login"`
-	IsTwoFactor    bool      `bson:"isTwoFactor, omitempty" json:"isTwoFactor"`
-	ExpireLoginOtp time.Time `bson:"expireLoginOtp" json:"expireLoginOtp"`
+	Verified       bool      `bson:"verified" json:"verified,omitempty"`
+	OTP            string    `bson:"otp,omitempty" json:"otp,omitempty"`
+	Votp           string    `bson:"votp,omitempty" json:"votp,omitempty"`
+	LoginOtp       string    `bson:"loginOtp,omitempty" json:"login,omitempty"`
+	IsTwoFactor    bool      `bson:"isTwoFactor, omitempty" json:"isTwoFactor,omitempty"`
+	ExpireLoginOtp time.Time `bson:"expireLoginOtp" json:"expireLoginOtp,omitempty"`
 	Role           string    `bson:"role,omitempty" json:"role,omitempty"`
 }
 
