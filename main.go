@@ -49,5 +49,5 @@ func main() {
 
 	logger.Info("Starting server ...")
 
-	http.ListenAndServe(":4000", r)
+	http.ListenAndServe(":"+os.Getenv("PORT"), r)
 }
