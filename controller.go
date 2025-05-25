@@ -115,12 +115,12 @@ func register(w http.ResponseWriter, r *http.Request) {
 
 func ValidatePassword(password string) bool {
 	if len(password) < 8 {
-		logger.Info("password is less than 8", len(password))
+		logger.Info("password is less than 8", "length", len(password))
 		return false
 	}
 
 	if len(password) > 20 {
-		logger.Info("password is greater than 20", len(password))
+		logger.Info("password is greater than 20", "length", len(password))
 		return false
 	}
 
