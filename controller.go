@@ -69,13 +69,6 @@ func register(w http.ResponseWriter, r *http.Request) {
 	user.CreatedAt = time.Now()
 	user.UpdatedAt = time.Now()
 
-	// check if dob is empty
-	if user.Dob.IsZero() {
-		logger.Info("dob is empty")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(Response{Message: "Invalid date of birth"})
-		return
-	}
 	// if not empty
 	if !user.Dob.IsZero() {
 		age := time.Now().Year() - user.Dob.Year()
@@ -89,6 +82,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	//
+
 	user.Verified = false
 	user.OTP = otpGenerator(user.Email)
 	result, err := collection.InsertOne(ctx, user)
@@ -552,8 +546,8 @@ func otpGenerator(receiver string) string {
 
 	message := []byte("Subject:Hello from Go\r\n\r\n Your verified otp for authentication is " + otp)
 
-	auth := smtp.PlainAuth("", os.Getenv("GMAIL_EMAIL"), os.Getenv("GMAIL_APP_PASSWORD"), "smtp.gmail.com")
-	err := smtp.SendMail("smtp.gmail.com"+":"+"587", auth, os.Getenv("GMAIL_EMAIL"), []string{receiver}, message)
+	auth := smtp.PlainAuth("", os.Getenv("SMTP_USER"), os.Getenv("SMTP_PASS"), os.Getenv("SMTP_HOST"))
+	err := smtp.SendMail(os.Getenv("SMTP_HOST")+":"+os.Getenv("SMTP_PORT"), auth, os.Getenv("SMTP_USER"), []string{receiver}, message)
 	if err != nil {
 		logger.Info("email did not send successfully")
 	} else {
