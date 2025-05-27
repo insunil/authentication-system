@@ -45,3 +45,7 @@ type Claims struct {
 	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
+
+type Organization struct {
+	Name string `bson:"name" json:"name"`
+}

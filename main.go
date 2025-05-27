@@ -14,6 +14,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+var db *mongo.Database
 var collection *mongo.Collection
 var logger *slog.Logger
 
@@ -29,6 +30,7 @@ func init() {
 	if err != nil {
 		log.Fatal("unable to connect")
 	}
+	db = client.Database("auth")
 	collection = client.Database("auth").Collection("user")
 
 	logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -46,6 +48,11 @@ func main() {
 	r.HandleFunc("/auth/reset-password/{id}", resetPassword).Methods("POST")
 	r.HandleFunc("/auth/verify-login/{id}", loginWithOtp).Methods("POST")
 	r.NotFoundHandler = http.HandlerFunc(notFound)
+
+	// handle organization
+	r.HandleFunc("/insert", insertOrg).Methods("POST")
+	r.HandleFunc("/update/{id}", updateOrg).Methods("PUT")
+	r.HandleFunc("/read/{id}", readSpecificOrg).Methods("GET")
 
 	logger.Info("Starting server ...")
 
