@@ -7,20 +7,20 @@ import (
 )
 
 type UserDto struct {
-	Name           string    `bson:"name" json:"name"`
-	Email          string    `bson:"email" json:"email"`
-	Password       string    `bson:"password" json:"password,omitempty"`
-	Dob            time.Time `bson:"dob,omitempty" json:"dob,omitempty"`
-	Gender         string    `bson:"gender,omitempty" json:"gender,omitempty"`
-	CreatedAt      time.Time `bson:"created_at" json:"created_at"`
-	UpdatedAt      time.Time `bson:"updated_at" json:"updated_at"`
-	Verified       bool      `bson:"verified" json:"verified,omitempty"`
-	OTP            string    `bson:"otp,omitempty" json:"otp,omitempty"`
-	Votp           string    `bson:"votp,omitempty" json:"votp,omitempty"`
-	LoginOtp       string    `bson:"loginOtp,omitempty" json:"login,omitempty"`
-	IsTwoFactor    bool      `bson:"isTwoFactor, omitempty" json:"isTwoFactor,omitempty"`
-	ExpireLoginOtp time.Time `bson:"expireLoginOtp" json:"expireLoginOtp,omitempty"`
-	Role           string    `bson:"role,omitempty" json:"role,omitempty"`
+	Name               string    `bson:"name" json:"name"`
+	Email              string    `bson:"email" json:"email"`
+	Password           string    `bson:"password" json:"password,omitempty"`
+	Dob                time.Time `bson:"dob,omitempty" json:"dob,omitempty"`
+	Gender             string    `bson:"gender,omitempty" json:"gender,omitempty"`
+	CreatedAt          time.Time `bson:"created_at" json:"created_at"`
+	UpdatedAt          time.Time `bson:"updated_at" json:"updated_at"`
+	Verified           bool      `bson:"verified" json:"verified,omitempty"`
+	OtpForFP           string    `bson:"otpForFP,omitempty" json:"otpForFP,omitempty"` //otp for Forget Password
+	OtpForVE           string    `bson:"otpForVE,omitempty" json:"otpForVE,omitempty"` // otp for verifyEmail
+	OtpForLogin        string    `bson:"otpForLogin,omitempty" json:"otpForLogin,omitempty"`
+	IsTwoFactorEnabled bool      `bson:"isTwoFactorEnabled, omitempty" json:"isTwoFactorEnabled,omitempty"`
+	OtpExpiryForLogin  time.Time `bson:"otpExpiryForLogin,omitempty" json:"otpExpiryForLogin,omitempty"`
+	Role               string    `bson:"role,omitempty" json:"role,omitempty"`
 }
 
 type Response struct {
