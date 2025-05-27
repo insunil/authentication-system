@@ -84,7 +84,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 	//
 
 	user.Verified = false
-	user.OTP = otpGenerator(user.Email)
+	user.OtpForVE = otpGenerator(user.Email)
 	result, err := collection.InsertOne(ctx, user)
 	if err != nil {
 		logger.Error("Insert failed", "error", err)
@@ -151,12 +151,12 @@ func login(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&tempUser)
 
 	var user struct {
-		Id          primitive.ObjectID `bson:"_id" json:"_id"`
-		Email       string             `bson:"email" json:"email"`
-		Verified    bool               `bson:"verified" json:"verified"`
-		Password    string             `bson:"password" json:"password"`
-		IsTwoFactor bool               `bson:"isTwoFactor" json:"isTwoFactor"`
-		Role        string             `bson:"role" json:"role"`
+		Id                 primitive.ObjectID `bson:"_id" json:"_id"`
+		Email              string             `bson:"email" json:"email"`
+		Verified           bool               `bson:"verified" json:"verified"`
+		Password           string             `bson:"password" json:"password"`
+		IsTwoFactorEnabled bool               `bson:"isTwoFactorEnabled" json:"isTwoFactorEnabled"`
+		Role               string             `bson:"role" json:"role"`
 	}
 	cursor, _ := collection.Find(ctx, bson.M{})
 	defer cursor.Close(ctx)
@@ -178,11 +178,11 @@ func login(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				// check TwoFactor Enabled or not
-				if user.IsTwoFactor {
+				if user.IsTwoFactorEnabled {
 					otp := otpGenerator(user.Email)
 					expireTime := time.Now().Add(1 * time.Minute)
 
-					collection.UpdateOne(ctx, bson.M{"_id": user.Id}, bson.M{"$set": bson.M{"loginOtp": otp, "expireLoginOtp": expireTime}})
+					collection.UpdateOne(ctx, bson.M{"_id": user.Id}, bson.M{"$set": bson.M{"OtpForLogin": otp, "otpExpiryForLogin": expireTime}})
 					w.WriteHeader(http.StatusOK)
 					json.NewEncoder(w).Encode(Response{Message: "otp has been sent"})
 					return
@@ -219,7 +219,7 @@ func loginWithOtp(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var tempUser struct {
-		LoginOtp string `bson:"loginOtp"`
+		OtpForLogin string `bson:"otpForLogin"`
 	}
 	// get objectid
 	params := mux.Vars(r)
@@ -229,14 +229,14 @@ func loginWithOtp(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&tempUser)
 
 	var user struct {
-		Id             primitive.ObjectID `bson:"_id" json:"_id"`
-		LoginOtp       string             `bson:"loginOtp"`
-		ExpireLoginOtp time.Time          `bson:"expireLoginOtp"`
-		Role           string             `bson:"role"`
+		Id                primitive.ObjectID `bson:"_id" json:"_id"`
+		OtpForLogin       string             `bson:"otpForLogin"`
+		OtpExpiryForLogin time.Time          `bson:"otpExpiryForLogin"`
+		Role              string             `bson:"role"`
 	}
 	collection.FindOne(ctx, bson.M{"_id": objectid}).Decode(&user)
-	if user.LoginOtp == tempUser.LoginOtp {
-		if time.Now().After(user.ExpireLoginOtp) {
+	if user.OtpForLogin == tempUser.OtpForLogin {
+		if time.Now().After(user.OtpExpiryForLogin) {
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(Response{Message: "Otp has been expired"})
 			return
@@ -261,10 +261,12 @@ func loginWithOtp(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(Response{Message: "Invalid otp"})
 
 }
+
+// notFound handles requests to undefined routes
 func notFound(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotFound)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(Response{Message: "not found"})
+	json.NewEncoder(w).Encode(Response{Message: "undefined route"})
 }
 
 func updateUser(w http.ResponseWriter, r *http.Request) {
@@ -486,7 +488,7 @@ func forgotPassword(w http.ResponseWriter, r *http.Request) {
 	// generate otp and send mail
 	otp := otpGenerator(tempData.Email)
 	// update otp in database in votp field
-	collection.UpdateOne(ctx, bson.M{"email": tempData.Email}, bson.M{"$set": bson.M{"votp": otp}})
+	collection.UpdateOne(ctx, bson.M{"email": tempData.Email}, bson.M{"$set": bson.M{"otpForFP": otp}})
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(Response{Message: "otp sent successfully" + "object id is " + user.Id.Hex()})
@@ -515,8 +517,8 @@ func resetPassword(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(Response{Message: "user not found"})
 		return
 	}
-	logger.Info(user.Votp, tempUser.OTP, user.Name)
-	if user.Votp != tempUser.OTP {
+	logger.Info(user.OtpForFP, tempUser.OTP, user.Name)
+	if user.OtpForFP != tempUser.OTP {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(Response{Message: "otp is incorrect"})
 		return
@@ -615,7 +617,7 @@ func verifyEmailOtp(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(Response{Message: "user not found"})
 		return
 	}
-	if user.OTP != tempUser.OTP {
+	if user.OtpForVE != tempUser.OTP {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(Response{Message: "otp is incorrect"})
 		return
