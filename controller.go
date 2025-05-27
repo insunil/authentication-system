@@ -191,17 +191,27 @@ func login(w http.ResponseWriter, r *http.Request) {
 
 				userid := user.Id.Hex() // convert objectid to string
 				role := user.Role
+				// generate access token
 				tokenString, err := TokenGenerator(userid, role)
+
 				if err != nil {
 					w.WriteHeader(http.StatusInternalServerError)
-					json.NewEncoder(w).Encode(Response{Message: "could not create token"})
+					json.NewEncoder(w).Encode(Response{Message: "could not create access token"})
+					return
+				}
+				//generate refresh token
+				refreshTokenString, err := generateRefreshToken(userid, role)
+				if err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(Response{Message: "could not create refresh token"})
 					return
 				}
 				// send token in response
 
 				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(map[string]string{
-					"token": tokenString})
+					"access_token":  tokenString,
+					"refresh_token": refreshTokenString})
 				return
 			}
 		}
@@ -571,7 +581,7 @@ func TokenGenerator(userid string, role string) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET_KEY")))
+	tokenString, err := token.SignedString([]byte(os.Getenv("ACCESS_SECRET_KEY")))
 	if err != nil {
 		logger.Info("could not create token")
 		return "", err
@@ -583,7 +593,7 @@ func TokenGenerator(userid string, role string) (string, error) {
 func VerifyToken(tokenString string) (string, error) {
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-		return []byte(os.Getenv("JWT_SECRET_KEY")), nil
+		return []byte(os.Getenv("ACCESS_SECRET_KEY")), nil
 	})
 
 	if err != nil || !token.Valid {
@@ -591,6 +601,84 @@ func VerifyToken(tokenString string) (string, error) {
 		return "", err
 	}
 	return claims.Userid, nil
+
+}
+
+func generateRefreshToken(userid string, role string) (string, error) {
+	claims := &Claims{
+		Userid: userid,
+		Role:   role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	tokenString, err := token.SignedString([]byte(os.Getenv("REFRESH_SECRET_KEY")))
+	if err != nil {
+		logger.Info("could not create token")
+		return "", err
+	}
+	return tokenString, nil
+}
+
+func VerifyRefreshToken(tokenString string) (string, error) {
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(os.Getenv("REFRESH_SECRET_KEY")), nil
+	})
+
+	if err != nil || !token.Valid {
+		logger.Info("unauthorized token")
+		return "", err
+	}
+	return claims.Userid, nil
+
+}
+
+func refreshHandler(w http.ResponseWriter, r *http.Request) {
+	logger.Info("Refresh token")
+	w.Header().Set("Content-Type", "application/json")
+	// Getting refresh token from Authorization header
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		logger.Info("Missing token")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "Missing token"})
+		return
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		logger.Info("Invalid token")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "Invalid token format"})
+		return
+	}
+
+	tokenStr := parts[1]
+	// Verify the refresh token
+	userid, err := VerifyRefreshToken(tokenStr)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "unauthorized token"})
+		return
+	}
+	// Generate a new access token
+	accessToken, err := TokenGenerator(userid, "user") // assuming role is user
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(Response{Message: "could not create access token"})
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	// Return the new access token and the same refresh token
+	json.NewEncoder(w).Encode(map[string]string{
+		"access_token":  accessToken,
+		"refresh_token": tokenStr, // returning the same refresh token
+	})
 
 }
 

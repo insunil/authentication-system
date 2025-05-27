@@ -49,6 +49,9 @@ func main() {
 	r.HandleFunc("/auth/verify-login/{id}", loginWithOtp).Methods("POST")
 	r.NotFoundHandler = http.HandlerFunc(notFound)
 
+	//handle refresh
+	r.HandleFunc("/auth/refresh", refreshHandler).Methods("POST")
+
 	// handle organization
 	r.HandleFunc("/insert", insertOrg).Methods("POST")
 	r.HandleFunc("/update/{id}", updateOrg).Methods("PUT")
