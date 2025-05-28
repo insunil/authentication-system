@@ -15,8 +15,10 @@ type UserDto struct {
 	CreatedAt          time.Time `bson:"created_at" json:"created_at"`
 	UpdatedAt          time.Time `bson:"updated_at" json:"updated_at"`
 	Verified           bool      `bson:"verified" json:"verified,omitempty"`
-	OtpForFP           string    `bson:"otpForFP,omitempty" json:"otpForFP,omitempty"` //otp for Forget Password
-	OtpForVE           string    `bson:"otpForVE,omitempty" json:"otpForVE,omitempty"` // otp for verifyEmail
+	OtpForFP           string    `bson:"otpForFP,omitempty" json:"otpForFP,omitempty"`             //otp for Forget Password
+	FpOtpExpiresAt     time.Time `bson:"fpOtpExpiresAt,omitempty" json:"fpOtpExpiresAt,omitempty"` // otp expiry for forget password
+	OtpForVE           string    `bson:"otpForVE,omitempty" json:"otpForVE,omitempty"`             // otp for verifyEmail
+	VeOtpExpiresAt     time.Time `bson:"veOtpExpiresAt,omitempty" json:"veOtpExpiresAt,omitempty"` // otp expiry for verify email
 	OtpForLogin        string    `bson:"otpForLogin,omitempty" json:"otpForLogin,omitempty"`
 	IsTwoFactorEnabled bool      `bson:"isTwoFactorEnabled, omitempty" json:"isTwoFactorEnabled,omitempty"`
 	OtpExpiryForLogin  time.Time `bson:"otpExpiryForLogin,omitempty" json:"otpExpiryForLogin,omitempty"`

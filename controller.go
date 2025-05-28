@@ -85,6 +85,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 
 	user.Verified = false
 	user.OtpForVE = otpGenerator(user.Email)
+	user.VeOtpExpiresAt = time.Now().Add(2 * time.Minute) // set otp expiry time
 	result, err := collection.InsertOne(ctx, user)
 	if err != nil {
 		logger.Error("Insert failed", "error", err)
@@ -498,7 +499,10 @@ func forgotPassword(w http.ResponseWriter, r *http.Request) {
 	// generate otp and send mail
 	otp := otpGenerator(tempData.Email)
 	// update otp in database in votp field
-	collection.UpdateOne(ctx, bson.M{"email": tempData.Email}, bson.M{"$set": bson.M{"otpForFP": otp}})
+	// set otp for forget password
+	// set forget password otp expiry time
+	fpOtpExpiresAt := time.Now().Add(2 * time.Minute).Format(time.RFC3339)
+	collection.UpdateOne(ctx, bson.M{"email": tempData.Email}, bson.M{"$set": bson.M{"otpForFP": otp, "fpOtpExpiresAt": fpOtpExpiresAt}})
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(Response{Message: "otp sent successfully" + "object id is " + user.Id.Hex()})
@@ -528,9 +532,17 @@ func resetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logger.Info(user.OtpForFP, tempUser.OTP, user.Name)
+	// check if otp is correct
 	if user.OtpForFP != tempUser.OTP {
+
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(Response{Message: "otp is incorrect"})
+		return
+	}
+	// check if otp is expired
+	if time.Now().After(user.FpOtpExpiresAt) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "otp has been expired"})
 		return
 	}
 	// password validation
@@ -705,9 +717,17 @@ func verifyEmailOtp(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(Response{Message: "user not found"})
 		return
 	}
+	// check if otp is correct
 	if user.OtpForVE != tempUser.OTP {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(Response{Message: "otp is incorrect"})
+		return
+	}
+
+	// check if otp is expired
+	if time.Now().After(user.VeOtpExpiresAt) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(Response{Message: "otp has been expired"})
 		return
 	}
 	// update user verified to true
